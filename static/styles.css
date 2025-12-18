@@ -1,0 +1,11 @@
+/* Custom styles for the circle reveal section */
+
+#circleAfter {
+  clip-path: circle(110px at 50% 50%);
+  -webkit-clip-path: circle(110px at 50% 50%);
+}
+
+#circleOverlay {
+  width: 220px;
+  height: 220px;
+}

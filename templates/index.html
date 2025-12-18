@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CCTV Image Enhancer using ESRGAN</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <header class="mb-8 text-center">
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
+        CCTV Image Enhancer using ESRGAN
+      </h1>
+      <p class="mt-2 text-sm md:text-base text-slate-400">
+        Low-Res CCTV frame → <span class="text-indigo-400">ESRGAN (x4)</span> → High-Res Detail
+      </p>
+    </header>
+
+    <!-- Upload + Button -->
+    <section class="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-xl">
+      <form
+        id="enhanceForm"
+        class="flex flex-col md:flex-row items-center gap-4 md:gap-6"
+      >
+        <div class="flex-1 w-full">
+          <label
+            for="image"
+            class="block text-sm font-medium text-slate-300 mb-2"
+            >Choose a low-resolution CCTV image</label
+          >
+          <input
+            id="image"
+            name="image"
+            type="file"
+            accept="image/*"
+            class="block w-full text-sm text-slate-300
+                   file:mr-4 file:py-2 file:px-4
+                   file:rounded-lg file:border-0
+                   file:text-sm file:font-semibold
+                   file:bg-indigo-600 file:text-white
+                   hover:file:bg-indigo-500
+                   cursor-pointer"
+            required
+          />
+          <p class="mt-2 text-xs text-slate-500">
+            Supported formats: JPG, PNG, JPEG, BMP
+          </p>
+        </div>
+
+        <button
+          id="enhanceButton"
+          type="submit"
+          class="inline-flex items-center justify-center px-6 py-3 rounded-xl
+                 bg-indigo-600 hover:bg-indigo-500 text-sm md:text-base font-semibold
+                 shadow-lg shadow-indigo-600/30 transition disabled:opacity-50"
+        >
+          Enhance (ESRGAN x4)
+        </button>
+      </form>
+
+      <p id="errorMsg" class="mt-4 text-sm text-red-400 hidden"></p>
+    </section>
+
+    <!-- Progress -->
+    <section class="mt-6">
+      <div class="space-y-2">
+        <div class="flex items-center justify-between text-xs md:text-sm text-slate-400">
+          <span id="progressText">Progress: waiting...</span>
+          <span id="progressPercent"></span>
+        </div>
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div id="progressBarInner" class="h-2 bg-indigo-500 w-0 transition-all duration-200"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Processing Pipeline -->
+    <section id="pipelineSection" class="mt-6">
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 md:p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm md:text-base font-semibold text-slate-200">
+            Internal Processing Pipeline (Conceptual)
+          </h2>
+          <p class="text-[11px] text-slate-500">
+            Steps update as ESRGAN enhancement progresses.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px] md:text-xs">
+          <div
+            class="pipeline-step rounded-xl border px-3 py-2"
+            data-pipeline-step="1"
+          >
+            <div class="font-semibold uppercase tracking-wide">
+              1. Input Analysis
+            </div>
+            <p class="mt-1 text-slate-300">
+              Reads resolution, brightness and basic noise profile.
+            </p>
+          </div>
+          <div
+            class="pipeline-step rounded-xl border px-3 py-2"
+            data-pipeline-step="2"
+          >
+            <div class="font-semibold uppercase tracking-wide">
+              2. Pre-processing
+            </div>
+            <p class="mt-1 text-slate-300">
+              Normalizes frame, prepares tensor for the neural model.
+            </p>
+          </div>
+          <div
+            class="pipeline-step rounded-xl border px-3 py-2"
+            data-pipeline-step="3"
+          >
+            <div class="font-semibold uppercase tracking-wide">
+              3. ESRGAN Upscaling
+            </div>
+            <p class="mt-1 text-slate-300">
+              Generator network performs 4× super-resolution on the image.
+            </p>
+          </div>
+          <div
+            class="pipeline-step rounded-xl border px-3 py-2"
+            data-pipeline-step="4"
+          >
+            <div class="font-semibold uppercase tracking-wide">
+              4. Post-processing
+            </div>
+            <p class="mt-1 text-slate-300">
+              Refines textures, suppresses artifacts and stabilizes details.
+            </p>
+          </div>
+          <div
+            class="pipeline-step rounded-xl border px-3 py-2"
+            data-pipeline-step="5"
+          >
+            <div class="font-semibold uppercase tracking-wide">
+              5. Quality Metrics
+            </div>
+            <p class="mt-1 text-slate-300">
+              Computes PSNR, SSIM, sharpness gain and overall quality score.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results (Input / Output thumbnails) -->
+    <section class="mt-10">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+        <!-- Input preview -->
+        <div>
+          <h2 class="text-lg font-semibold mb-3 text-slate-200">Low-Res Input</h2>
+          <div
+            class="relative aspect-square w-full max-w-xl mx-auto rounded-2xl border border-slate-800 bg-slate-900/80 flex items-center justify-center overflow-hidden"
+          >
+            <img
+              id="inputPreview"
+              src=""
+              alt="Input"
+              class="w-full h-full object-contain hidden"
+            />
+            <span
+              id="inputPlaceholder"
+              class="text-sm text-slate-500"
+            >
+              No image selected yet
+            </span>
+          </div>
+        </div>
+
+        <!-- Output preview -->
+        <div>
+          <div class="flex items-center justify-between mb-3 gap-3">
+            <h2 class="text-lg font-semibold text-slate-200">
+              High-Res Output (ESRGAN x4)
+            </h2>
+            <div class="flex items-center gap-2">
+              <button
+                id="compareButton"
+                class="text-xs md:text-sm px-3 py-1.5 rounded-lg border border-sky-500/70
+                       text-sky-300 hover:bg-sky-500/10 disabled:opacity-50"
+                disabled
+              >
+                ⇄ Compare
+              </button>
+              <button
+                id="downloadImageBtn"
+                class="text-xs md:text-sm px-3 py-1.5 rounded-lg border border-indigo-500/60
+                       text-indigo-300 hover:bg-indigo-500/10 disabled:opacity-50"
+                disabled
+              >
+                ⬇ Download
+              </button>
+            </div>
+          </div>
+          <div
+            class="relative aspect-square w-full max-w-xl mx-auto rounded-2xl border border-slate-800 bg-slate-900/80 flex items-center justify-center overflow-hidden"
+          >
+            <img
+              id="outputPreview"
+              src=""
+              alt="Output"
+              class="w-full h-full object-contain hidden"
+            />
+            <span
+              id="outputPlaceholder"
+              class="text-sm text-slate-500"
+            >
+              No output yet
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Model Comparison: Input vs Bicubic vs ESRGAN -->
+    <section id="modelComparisonSection" class="mt-10 hidden">
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3 gap-3">
+          <div>
+            <h2 class="text-lg font-semibold text-slate-200">
+              Model Comparison: Traditional Upscaling vs ESRGAN
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">
+              Bicubic represents a classic interpolation baseline. ESRGAN is a deep learning-based
+              super-resolution model trained on real-world images.
+            </p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div>
+            <h3 class="font-semibold text-slate-200 mb-1">Original Input</h3>
+            <div class="aspect-square w-full rounded-xl border border-slate-800 bg-slate-900/70 flex items-center justify-center overflow-hidden">
+              <img id="mcInput" src="" alt="Model Comparison Input" class="w-full h-full object-contain hidden" />
+              <span id="mcInputPlaceholder" class="text-slate-500 text-[11px]">Waiting for input</span>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-500">
+              Low-resolution CCTV frame as captured by the camera.
+            </p>
+          </div>
+
+          <div>
+            <h3 class="font-semibold text-slate-200 mb-1">Bicubic Upscale (Baseline)</h3>
+            <div class="aspect-square w-full rounded-xl border border-slate-800 bg-slate-900/70 flex items-center justify-center overflow-hidden">
+              <img id="mcBaseline" src="" alt="Model Comparison Bicubic" class="w-full h-full object-contain hidden" />
+              <span id="mcBaselinePlaceholder" class="text-slate-500 text-[11px]">Generated baseline not ready</span>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-500">
+              Traditional interpolation-only zoom. Often appears soft and blurry.
+            </p>
+          </div>
+
+          <div>
+            <h3 class="font-semibold text-slate-200 mb-1">ESRGAN x4 (Ours)</h3>
+            <div class="aspect-square w-full rounded-xl border border-slate-800 bg-slate-900/70 flex items-center justify-center overflow-hidden">
+              <img id="mcEnhanced" src="" alt="Model Comparison ESRGAN" class="w-full h-full object-contain hidden" />
+              <span id="mcEnhancedPlaceholder" class="text-slate-500 text-[11px]">No enhanced output yet</span>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-500">
+              Deep neural network enhancement. The comparison clearly shows sharper edges and restored texture.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Circle Reveal Compare -->
+    <section id="circleSection" class="mt-10 hidden">
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <h2 class="text-lg font-semibold text-slate-200 mb-2">
+          Circle Reveal Comparison
+        </h2>
+        <p class="text-xs text-slate-500 mb-3">
+          Move your mouse over the image. Outside the circle is the original CCTV frame. Inside the circle you see the enhanced ESRGAN output.
+        </p>
+
+        <div
+          id="circleContainer"
+          class="relative w-full max-w-3xl mx-auto aspect-[16/9] rounded-2xl border border-slate-800 bg-black overflow-hidden select-none cursor-none md:cursor-crosshair"
+        >
+          <!-- Original / input image (full frame) -->
+          <img
+            id="circleBefore"
+            src=""
+            class="absolute inset-0 w-full h-full object-contain pointer-events-none"
+          />
+
+          <!-- Enhanced image (full frame, but clipped to a circle via clip-path) -->
+          <img
+            id="circleAfter"
+            src=""
+            class="absolute inset-0 w-full h-full object-contain pointer-events-none"
+            style="clip-path: circle(110px at 50% 50%); -webkit-clip-path: circle(110px at 50% 50%);"
+          />
+
+          <!-- Visible ring matching the clip-path circle -->
+          <div
+            id="circleOverlay"
+            class="absolute rounded-full border-2 border-indigo-400 shadow-[0_0_20px_rgba(129,140,248,0.8)] pointer-events-none"
+            style="width:220px; height:220px;"
+          ></div>
+        </div>
+
+        <p class="text-[11px] text-slate-500 mt-2">
+          Tip: Hover the circle over faces, number plates or text to show how ESRGAN restores details on top of the original CCTV frame.
+        </p>
+      </div>
+    </section>
+
+    <!-- Image Quality Report -->
+    <section
+      id="metricsSection"
+      class="mt-10 hidden"
+    >
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 class="text-lg font-semibold text-slate-200">
+              Image Quality & Accuracy Report
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">
+              Computed from the image before and after enhancement (resolution, sharpness, PSNR, SSIM).
+            </p>
+          </div>
+          <button
+            id="downloadReportBtn"
+            class="text-xs md:text-sm px-3 py-1.5 rounded-lg border border-emerald-500/60
+                   text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
+            disabled
+          >
+            ⬇ Download Report (TXT)
+          </button>
+        </div>
+
+        <dl class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt class="text-slate-400">Resolution</dt>
+            <dd id="metricsResolution" class="font-medium text-slate-100">
+              –
+            </dd>
+          </div>
+          <div>
+            <dt class="text-slate-400">Upscale Factor</dt>
+            <dd id="metricsUpsscale" class="font-medium text-slate-100">
+              –
+            </dd>
+          </div>
+          <div>
+            <dt class="text-slate-400">Pixel Count Increase</dt>
+            <dd id="metricsPixels" class="font-medium text-slate-100">
+              –
+            </dd>
+          </div>
+          <div>
+            <dt class="text-slate-400">Estimated Sharpness Gain</dt>
+            <dd id="metricsSharpness" class="font-medium text-slate-100">
+              –
+            </dd>
+          </div>
+          <div>
+            <dt id="labelPSNR" class="text-slate-400">
+              PSNR (vs. simple upscaled baseline)
+            </dt>
+            <dd id="metricsPSNR" class="font-medium text-slate-100">
+              –
+            </dd>
+          </div>
+          <div>
+            <dt id="labelSSIM" class="text-slate-400">
+              SSIM (0–1 similarity to baseline)
+            </dt>
+            <dd id="metricsSSIM" class="font-medium text-slate-100">
+              –
+            </dd>
+          </div>
+          <div>
+            <dt id="labelQuality" class="text-slate-400">
+              Approx. Quality / Accuracy Score
+            </dt>
+            <dd id="metricsQuality" class="font-medium text-slate-100">
+              –
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- Session Stats / Dashboard -->
+    <section id="sessionStatsSection" class="mt-6 hidden">
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-slate-200">
+            Session Summary (this browser)
+          </h2>
+          <p class="text-xs text-slate-500">
+            Auto-updated from all enhancements done in this session.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
+            <div class="text-[11px] uppercase tracking-wide text-slate-500">
+              Images Enhanced
+            </div>
+            <div id="statsTotalImages" class="text-lg font-semibold text-slate-100">
+              0
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
+            <div class="text-[11px] uppercase tracking-wide text-slate-500">
+              Avg Quality Score
+            </div>
+            <div id="statsBestQuality" class="text-lg font-semibold text-emerald-300">
+              –
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
+            <div class="text-[11px] uppercase tracking-wide text-slate-500">
+              Avg PSNR (dB)
+            </div>
+            <div id="statsAvgPSNR" class="text-lg font-semibold text-slate-100">
+              –
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
+            <div class="text-[11px] uppercase tracking-wide text-slate-500">
+              Avg SSIM
+            </div>
+            <div id="statsAvgSSIM" class="text-lg font-semibold text-slate-100">
+              –
+            </div>
+          </div>
+        </div>
+
+        <p class="mt-3 text-[11px] text-slate-500 leading-relaxed">
+          These values are calculated only from images processed in this browser session using
+          ESRGAN. Higher PSNR and SSIM usually mean better structural preservation and less
+          distortion in the enhanced CCTV frame.
+        </p>
+      </div>
+    </section>
+
+    <!-- History / Previous Enhancements -->
+    <section id="historySection" class="mt-10 hidden">
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-slate-200">
+            Previous Enhancements (this session)
+          </h2>
+        </div>
+        <div
+          id="historyList"
+          class="flex flex-wrap gap-3"
+        ></div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="mt-10 text-center text-xs text-slate-500">
+      Model: ESRGAN • CCTV Enhancement Demo
+    </footer>
+  </div>
+
+  <!-- Fullscreen Dual Viewer: Input & Output side-by-side -->
+  <div
+    id="imageViewer"
+    class="fixed inset-0 bg-black/80 z-50 hidden"
+  >
+    <div class="w-full h-full flex items-center justify-center">
+      <div class="relative max-w-6xl w-full h-[90vh] mx-4 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-slate-800">
+          <span class="text-sm text-slate-200">
+            Side-by-side CCTV Viewer (Zoom & Pan)
+          </span>
+          <button
+            id="viewerCloseBtn"
+            class="px-3 py-1 text-xs rounded border border-red-500/60 text-red-200 hover:bg-red-500/10"
+          >
+            ✕ Close
+          </button>
+        </div>
+
+        <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 p-3">
+          <!-- Input pane -->
+          <div class="flex flex-col bg-black/60 rounded-xl border border-slate-800 overflow-hidden">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+              <span class="text-xs text-slate-200">Input CCTV Frame</span>
+              <div class="flex items-center gap-1">
+                <button
+                  id="viewerInputZoomOutBtn"
+                  class="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  −
+                </button>
+                <button
+                  id="viewerInputZoomInBtn"
+                  class="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  +
+                </button>
+                <button
+                  id="viewerInputResetBtn"
+                  class="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+            <div
+              id="viewerInputContainer"
+              class="flex-1 relative overflow-hidden flex items-center justify-center cursor-grab"
+            >
+              <img
+                id="viewerInputImage"
+                src=""
+                alt="Input Viewer"
+                class="select-none pointer-events-none"
+                draggable="false"
+              />
+            </div>
+          </div>
+
+          <!-- Output pane -->
+          <div class="flex flex-col bg-black/60 rounded-xl border border-slate-800 overflow-hidden">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+              <span class="text-xs text-slate-200">Enhanced CCTV Frame (ESRGAN x4)</span>
+              <div class="flex items-center gap-1">
+                <button
+                  id="viewerOutputZoomOutBtn"
+                  class="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  −
+                </button>
+                <button
+                  id="viewerOutputZoomInBtn"
+                  class="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  +
+                </button>
+                <button
+                  id="viewerOutputResetBtn"
+                  class="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+            <div
+              id="viewerOutputContainer"
+              class="flex-1 relative overflow-hidden flex items-center justify-center cursor-grab"
+            >
+              <img
+                id="viewerOutputImage"
+                src=""
+                alt="Output Viewer"
+                class="select-none pointer-events-none"
+                draggable="false"
+              />
+            </div>
+          </div>
+        </div>
+
+        <p class="px-4 py-2 text-[11px] text-slate-500 border-t border-slate-800">
+          Tip: Use mouse wheel to zoom, and click-drag to pan around each image. Good for tiny CCTV details like faces or plates.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("enhanceForm");
+    const fileInput = document.getElementById("image");
+    const enhanceButton = document.getElementById("enhanceButton");
+    const errorMsg = document.getElementById("errorMsg");
+
+    const inputPreview = document.getElementById("inputPreview");
+    const inputPlaceholder = document.getElementById("inputPlaceholder");
+    const outputPreview = document.getElementById("outputPreview");
+    const outputPlaceholder = document.getElementById("outputPlaceholder");
+
+    const progressText = document.getElementById("progressText");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressBarInner = document.getElementById("progressBarInner");
+
+    const compareButton = document.getElementById("compareButton");
+
+    const metricsSection = document.getElementById("metricsSection");
+    const metricsResolution = document.getElementById("metricsResolution");
+    const metricsUpsscale = document.getElementById("metricsUpsscale");
+    const metricsPixels = document.getElementById("metricsPixels");
+    const metricsSharpness = document.getElementById("metricsSharpness");
+    const metricsPSNR = document.getElementById("metricsPSNR");
+    const metricsSSIM = document.getElementById("metricsSSIM");
+    const metricsQuality = document.getElementById("metricsQuality");
+
+    const downloadImageBtn = document.getElementById("downloadImageBtn");
+    const downloadReportBtn = document.getElementById("downloadReportBtn");
+
+    const historySection = document.getElementById("historySection");
+    const historyList = document.getElementById("historyList");
+
+    const sessionStatsSection = document.getElementById("sessionStatsSection");
+    const statsTotalImages = document.getElementById("statsTotalImages");
+    const statsAvgPSNR = document.getElementById("statsAvgPSNR");
+    const statsAvgSSIM = document.getElementById("statsAvgSSIM");
+    const statsBestQuality = document.getElementById("statsBestQuality");
+
+    // Pipeline
+    const pipelineSteps = document.querySelectorAll("[data-pipeline-step]");
+
+    // Circle reveal elements
+    const circleSection = document.getElementById("circleSection");
+    const circleContainer = document.getElementById("circleContainer");
+    const circleBefore = document.getElementById("circleBefore");
+    const circleAfter = document.getElementById("circleAfter");
+    const circleOverlay = document.getElementById("circleOverlay");
+
+    // Model comparison elements
+    const modelComparisonSection = document.getElementById("modelComparisonSection");
+    const mcInput = document.getElementById("mcInput");
+    const mcInputPlaceholder = document.getElementById("mcInputPlaceholder");
+    const mcBaseline = document.getElementById("mcBaseline");
+    const mcBaselinePlaceholder = document.getElementById("mcBaselinePlaceholder");
+    const mcEnhanced = document.getElementById("mcEnhanced");
+    const mcEnhancedPlaceholder = document.getElementById("mcEnhancedPlaceholder");
+
+    // Viewer elements
+    const imageViewer = document.getElementById("imageViewer");
+    const viewerCloseBtn = document.getElementById("viewerCloseBtn");
+
+    const viewerInputContainer = document.getElementById("viewerInputContainer");
+    const viewerInputImage = document.getElementById("viewerInputImage");
+    const viewerInputZoomInBtn = document.getElementById("viewerInputZoomInBtn");
+    const viewerInputZoomOutBtn = document.getElementById("viewerInputZoomOutBtn");
+    const viewerInputResetBtn = document.getElementById("viewerInputResetBtn");
+
+    const viewerOutputContainer = document.getElementById("viewerOutputContainer");
+    const viewerOutputImage = document.getElementById("viewerOutputImage");
+    const viewerOutputZoomInBtn = document.getElementById("viewerOutputZoomInBtn");
+    const viewerOutputZoomOutBtn = document.getElementById("viewerOutputZoomOutBtn");
+    const viewerOutputResetBtn = document.getElementById("viewerOutputResetBtn");
+
+    let polling = false;
+    let currentOutputUrl = null;
+    let currentInputUrl = null;
+    let currentBaselineUrl = null;
+    let currentMetrics = null;
+    let historyItems = []; // { input, output, baseline, metrics }
+
+    // --- Dual viewer panes state ---
+    const panes = {
+      input: {
+        container: viewerInputContainer,
+        img: viewerInputImage,
+        scale: 1,
+        tx: 0,
+        ty: 0,
+      },
+      output: {
+        container: viewerOutputContainer,
+        img: viewerOutputImage,
+        scale: 1,
+        tx: 0,
+        ty: 0,
+      },
+    };
+
+    let isPanning = false;
+    let panStartX = 0;
+    let panStartY = 0;
+    let panStartTx = 0;
+    let panStartTy = 0;
+    let activePane = null;
+
+    // ---- Pipeline helpers ----
+    function setPipelineStepState(el, state) {
+      // Reset base style
+      let base =
+        "pipeline-step rounded-xl border px-3 py-2 transition-colors duration-200";
+      if (state === "active") {
+        el.className =
+          base +
+          " border-indigo-400 bg-slate-900 text-slate-100 shadow-[0_0_15px_rgba(129,140,248,0.5)]";
+      } else if (state === "complete") {
+        el.className =
+          base +
+          " border-emerald-400 bg-slate-900 text-emerald-100";
+      } else {
+        el.className =
+          base +
+          " border-slate-800 bg-slate-950 text-slate-500 opacity-70";
+      }
+    }
+
+    function resetPipeline() {
+      pipelineSteps.forEach((step) => setPipelineStepState(step, "pending"));
+    }
+
+    function updatePipeline(progressValue, running) {
+      if (!running && !currentOutputUrl) {
+        resetPipeline();
+        return;
+      }
+
+      const p = Math.max(0, Math.min(1, progressValue || 0));
+      let activeIndex = 1;
+
+      if (p <= 0.05) activeIndex = 1;
+      else if (p <= 0.25) activeIndex = 2;
+      else if (p <= 0.6) activeIndex = 3;
+      else if (p <= 0.85) activeIndex = 4;
+      else activeIndex = 5;
+
+      pipelineSteps.forEach((step) => {
+        const idx = parseInt(step.getAttribute("data-pipeline-step"), 10);
+        if (idx < activeIndex) setPipelineStepState(step, "complete");
+        else if (idx === activeIndex) setPipelineStepState(step, "active");
+        else setPipelineStepState(step, "pending");
+      });
+    }
+
+    // ---- Circle helper ----
+    function refreshCircle() {
+      if (currentInputUrl && currentOutputUrl) {
+        circleBefore.src = currentInputUrl;
+        circleAfter.src = currentOutputUrl;
+        circleSection.classList.remove("hidden");
+
+        const rect = circleContainer.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const RADIUS = 110;
+        circleAfter.style.clipPath = `circle(${RADIUS}px at ${centerX}px ${centerY}px)`;
+        circleAfter.style.webkitClipPath = `circle(${RADIUS}px at ${centerX}px ${centerY}px)`;
+        circleOverlay.style.left = centerX - RADIUS + "px";
+        circleOverlay.style.top = centerY - RADIUS + "px";
+      } else {
+        circleSection.classList.add("hidden");
+      }
+    }
+
+    if (circleContainer) {
+      const RADIUS = 110;
+
+      function moveCircle(clientX, clientY) {
+        const rect = circleContainer.getBoundingClientRect();
+        let x = clientX - rect.left;
+        let y = clientY - rect.top;
+
+        x = Math.max(RADIUS, Math.min(rect.width - RADIUS, x));
+        y = Math.max(RADIUS, Math.min(rect.height - RADIUS, y));
+
+        circleAfter.style.clipPath = `circle(${RADIUS}px at ${x}px ${y}px)`;
+        circleAfter.style.webkitClipPath = `circle(${RADIUS}px at ${x}px ${y}px)`;
+        circleOverlay.style.left = x - RADIUS + "px";
+        circleOverlay.style.top = y - RADIUS + "px";
+      }
+
+      circleContainer.addEventListener("mousemove", (e) => {
+        moveCircle(e.clientX, e.clientY);
+      });
+
+      circleContainer.addEventListener("touchmove", (e) => {
+        const t = e.touches[0];
+        moveCircle(t.clientX, t.clientY);
+      });
+    }
+
+    // ---- Model Comparison helper ----
+    function refreshModelComparison() {
+      if (currentInputUrl) {
+        mcInput.src = currentInputUrl;
+        mcInput.classList.remove("hidden");
+        mcInputPlaceholder.classList.add("hidden");
+      }
+
+      if (currentBaselineUrl) {
+        mcBaseline.src = currentBaselineUrl;
+        mcBaseline.classList.remove("hidden");
+        mcBaselinePlaceholder.classList.add("hidden");
+      }
+
+      if (currentOutputUrl) {
+        mcEnhanced.src = currentOutputUrl;
+        mcEnhanced.classList.remove("hidden");
+        mcEnhancedPlaceholder.classList.add("hidden");
+      }
+
+      if (currentBaselineUrl && currentOutputUrl) {
+        modelComparisonSection.classList.remove("hidden");
+      } else {
+        modelComparisonSection.classList.add("hidden");
+      }
+    }
+
+    // ---- Viewer helpers ----
+
+    function updatePaneTransform(pane) {
+      pane.img.style.transform =
+        "translate(" + pane.tx + "px, " + pane.ty + "px) scale(" + pane.scale + ")";
+    }
+
+    function resetPane(pane) {
+      pane.scale = 1;
+      pane.tx = 0;
+      pane.ty = 0;
+      updatePaneTransform(pane);
+    }
+
+    function zoomPane(pane, factor) {
+      pane.scale = Math.min(Math.max(pane.scale * factor, 0.25), 10);
+      updatePaneTransform(pane);
+    }
+
+    function openViewer() {
+      if (!currentInputUrl && !currentOutputUrl) return;
+
+      if (currentInputUrl) viewerInputImage.src = currentInputUrl;
+      if (currentOutputUrl) viewerOutputImage.src = currentOutputUrl;
+
+      resetPane(panes.input);
+      resetPane(panes.output);
+
+      imageViewer.classList.remove("hidden");
+      imageViewer.classList.add("flex");
+    }
+
+    function closeViewer() {
+      imageViewer.classList.add("hidden");
+      imageViewer.classList.remove("flex");
+      activePane = null;
+      isPanning = false;
+    }
+
+    viewerCloseBtn.addEventListener("click", closeViewer);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeViewer();
+    });
+
+    function startPan(e, paneKey) {
+      const pane = panes[paneKey];
+      activePane = pane;
+      isPanning = true;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      panStartTx = pane.tx;
+      panStartTy = pane.ty;
+      panes.input.container.classList.remove("cursor-grabbing");
+      panes.output.container.classList.remove("cursor-grabbing");
+      pane.container.classList.add("cursor-grabbing");
+    }
+
+    viewerInputContainer.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      startPan(e, "input");
+    });
+
+    viewerOutputContainer.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      startPan(e, "output");
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!isPanning || !activePane) return;
+      const dx = e.clientX - panStartX;
+      const dy = e.clientY - panStartY;
+      activePane.tx = panStartTx + dx;
+      activePane.ty = panStartTy + dy;
+      updatePaneTransform(activePane);
+    });
+
+    document.addEventListener("mouseup", () => {
+      isPanning = false;
+      activePane = null;
+      panes.input.container.classList.remove("cursor-grabbing");
+      panes.output.container.classList.remove("cursor-grabbing");
+    });
+
+    viewerInputContainer.addEventListener("mouseleave", () => {
+      isPanning = false;
+      activePane = null;
+      viewerInputContainer.classList.remove("cursor-grabbing");
+    });
+
+    viewerOutputContainer.addEventListener("mouseleave", () => {
+      isPanning = false;
+      activePane = null;
+      viewerOutputContainer.classList.remove("cursor-grabbing");
+    });
+
+    function handleWheel(e, paneKey) {
+      e.preventDefault();
+      const pane = panes[paneKey];
+      const delta = e.deltaY < 0 ? 1.1 : 0.9;
+      zoomPane(pane, delta);
+    }
+
+    viewerInputContainer.addEventListener("wheel", (e) =>
+      handleWheel(e, "input")
+    );
+    viewerOutputContainer.addEventListener("wheel", (e) =>
+      handleWheel(e, "output")
+    );
+
+    viewerInputZoomInBtn.addEventListener("click", () =>
+      zoomPane(panes.input, 1.25)
+    );
+    viewerInputZoomOutBtn.addEventListener("click", () =>
+      zoomPane(panes.input, 1 / 1.25)
+    );
+    viewerInputResetBtn.addEventListener("click", () =>
+      resetPane(panes.input)
+    );
+
+    viewerOutputZoomInBtn.addEventListener("click", () =>
+      zoomPane(panes.output, 1.25)
+    );
+    viewerOutputZoomOutBtn.addEventListener("click", () =>
+      zoomPane(panes.output, 1 / 1.25)
+    );
+    viewerOutputResetBtn.addEventListener("click", () =>
+      resetPane(panes.output)
+    );
+
+    compareButton.addEventListener("click", () => {
+      if (!compareButton.disabled) openViewer();
+    });
+
+    // ---- Metrics UI ----
+
+    function applyMetricsToUI(m) {
+      if (!m) {
+        metricsSection.classList.add("hidden");
+        metricsResolution.textContent = "–";
+        metricsUpsscale.textContent = "–";
+        metricsPixels.textContent = "–";
+        metricsSharpness.textContent = "–";
+        metricsPSNR.textContent = "–";
+        metricsSSIM.textContent = "–";
+        metricsQuality.textContent = "–";
+        downloadReportBtn.disabled = true;
+        return;
+      }
+
+      metricsResolution.textContent =
+        (m.input_resolution || "?") + " → " + (m.output_resolution || "?");
+
+      metricsUpsscale.textContent =
+        m.upscale_factor != null ? m.upscale_factor + "×" : "–";
+
+      metricsPixels.textContent =
+        m.pixel_increase_pct != null ? "+" + m.pixel_increase_pct + "% pixels" : "–";
+
+      metricsSharpness.textContent =
+        m.sharpness_gain_pct != null
+          ? (m.sharpness_gain_pct >= 0 ? "+" : "") +
+            m.sharpness_gain_pct +
+            "% (estimated)"
+          : "–";
+
+      metricsPSNR.textContent =
+        m.psnr_db != null ? m.psnr_db + " dB" : "–";
+
+      metricsSSIM.textContent =
+        m.ssim != null ? m.ssim : "–";
+
+      metricsQuality.textContent =
+        m.quality_score_pct != null ? m.quality_score_pct + " / 100" : "–";
+
+      metricsSection.classList.remove("hidden");
+      downloadReportBtn.disabled = false;
+    }
+
+    // ---- Session Stats ----
+    function updateSessionStats() {
+      if (!historyItems.length) {
+        sessionStatsSection.classList.add("hidden");
+        statsTotalImages.textContent = "0";
+        statsAvgPSNR.textContent = "–";
+        statsAvgSSIM.textContent = "–";
+        statsBestQuality.textContent = "–";
+        return;
+      }
+
+      sessionStatsSection.classList.remove("hidden");
+
+      let total = historyItems.length;
+      let sumPSNR = 0;
+      let sumSSIM = 0;
+      let countPSNR = 0;
+      let countSSIM = 0;
+      let sumQuality = 0;
+      let countQuality = 0;
+
+      historyItems.forEach((item) => {
+        const m = item.metrics;
+        if (!m) return;
+
+        if (typeof m.psnr_db === "number") {
+          sumPSNR += m.psnr_db;
+          countPSNR++;
+        }
+        if (typeof m.ssim === "number") {
+          sumSSIM += m.ssim;
+          countSSIM++;
+        }
+        if (typeof m.quality_score_pct === "number") {
+          sumQuality += m.quality_score_pct;
+          countQuality++;
+        }
+      });
+
+      statsTotalImages.textContent = String(total);
+      statsAvgPSNR.textContent = countPSNR ? (sumPSNR / countPSNR).toFixed(2) : "–";
+      statsAvgSSIM.textContent = countSSIM ? (sumSSIM / countSSIM).toFixed(4) : "–";
+      statsBestQuality.textContent =
+        countQuality ? (sumQuality / countQuality).toFixed(1) + " / 100" : "–";
+    }
+
+    // ---- History Rendering ----
+
+    function renderHistory() {
+      historyList.innerHTML = "";
+
+      if (historyItems.length === 0) {
+        historySection.classList.add("hidden");
+        updateSessionStats();
+        return;
+      }
+
+      historySection.classList.remove("hidden");
+
+      historyItems.forEach((item, idx) => {
+        const wrapper = document.createElement("button");
+        wrapper.type = "button";
+        wrapper.className =
+          "group relative w-28 h-28 rounded-xl overflow-hidden border border-slate-700 " +
+          "bg-slate-900 hover:border-indigo-500/70 focus:outline-none " +
+          "focus:ring-2 focus:ring-indigo-500/70 transition";
+
+        const img = document.createElement("img");
+        img.src = item.output;
+        img.alt = "Enhanced thumbnail " + (idx + 1);
+        img.className = "w-full h-full object-cover opacity-90 group-hover:opacity-100";
+
+        const overlay = document.createElement("div");
+        overlay.className =
+          "absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 " +
+          "flex items-center justify-center text-[10px] text-slate-100 font-medium transition";
+        overlay.textContent = "Load";
+
+        wrapper.appendChild(img);
+        wrapper.appendChild(overlay);
+
+        wrapper.addEventListener("click", () => {
+          inputPreview.src = item.input;
+          inputPreview.classList.remove("hidden");
+          inputPlaceholder.classList.add("hidden");
+
+          outputPreview.src = item.output;
+          outputPreview.classList.remove("hidden");
+          outputPlaceholder.classList.add("hidden");
+
+          currentInputUrl = item.input;
+          currentOutputUrl = item.output;
+          currentBaselineUrl = item.baseline || null;
+          compareButton.disabled = false;
+          downloadImageBtn.disabled = false;
+
+          currentMetrics = item.metrics || null;
+          applyMetricsToUI(currentMetrics);
+          refreshCircle();
+          refreshModelComparison();
+
+          errorMsg.classList.add("hidden");
+          errorMsg.textContent = "";
+        });
+
+        historyList.appendChild(wrapper);
+      });
+
+      updateSessionStats();
+    }
+
+    // ---- Input change ----
+
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        inputPreview.src = ev.target.result;
+        currentInputUrl = ev.target.result;
+        inputPreview.classList.remove("hidden");
+        inputPlaceholder.classList.add("hidden");
+
+        mcInput.src = ev.target.result;
+        mcInput.classList.remove("hidden");
+        mcInputPlaceholder.classList.add("hidden");
+
+        refreshCircle();
+        refreshModelComparison();
+      };
+      reader.readAsDataURL(file);
+
+      outputPreview.classList.add("hidden");
+      outputPlaceholder.classList.remove("hidden");
+
+      progressText.textContent = "Progress: waiting...";
+      progressPercent.textContent = "";
+      progressBarInner.style.width = "0%";
+
+      currentOutputUrl = null;
+      currentBaselineUrl = null;
+      currentMetrics = null;
+      compareButton.disabled = true;
+      downloadImageBtn.disabled = true;
+      downloadReportBtn.disabled = true;
+      modelComparisonSection.classList.add("hidden");
+      applyMetricsToUI(null);
+      refreshCircle();
+      refreshModelComparison();
+      resetPipeline();
+    });
+
+    // ---- Form submit ----
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      errorMsg.classList.add("hidden");
+      errorMsg.textContent = "";
+
+      const file = fileInput.files[0];
+      if (!file) {
+        errorMsg.textContent = "Please choose an image first.";
+        errorMsg.classList.remove("hidden");
+        return;
+      }
+
+      enhanceButton.disabled = true;
+      enhanceButton.textContent = "Enhancing...";
+      outputPreview.classList.add("hidden");
+      outputPlaceholder.classList.remove("hidden");
+      progressText.textContent = "Progress: starting...";
+      progressPercent.textContent = "";
+      progressBarInner.style.width = "0%";
+
+      currentOutputUrl = null;
+      currentBaselineUrl = null;
+      currentMetrics = null;
+      compareButton.disabled = true;
+      downloadImageBtn.disabled = true;
+      downloadReportBtn.disabled = true;
+      modelComparisonSection.classList.add("hidden");
+      applyMetricsToUI(null);
+      refreshCircle();
+      refreshModelComparison();
+      resetPipeline();
+
+      const formData = new FormData();
+      formData.append("image", file);
+
+      try {
+        const res = await fetch("/start", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+          throw new Error(data.error || "Unknown error.");
+        }
+
+        if (data.input_url) {
+          inputPreview.src = data.input_url;
+          currentInputUrl = data.input_url;
+          inputPreview.classList.remove("hidden");
+          inputPlaceholder.classList.add("hidden");
+
+          mcInput.src = data.input_url;
+          mcInput.classList.remove("hidden");
+          mcInputPlaceholder.classList.add("hidden");
+        }
+
+        polling = true;
+        pollStatus();
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        errorMsg.classList.remove("hidden");
+        enhanceButton.disabled = false;
+        enhanceButton.textContent = "Enhance (ESRGAN x4)";
+      }
+    });
+
+    // ---- Poll status ----
+
+    async function pollStatus() {
+      if (!polling) return;
+
+      try {
+        const res = await fetch("/status");
+        const data = await res.json();
+
+        if (data.progress_text) {
+          progressText.textContent = "Progress: " + data.progress_text;
+        }
+
+        if (typeof data.progress_value === "number") {
+          const pct = Math.round(data.progress_value * 100);
+          progressPercent.textContent = pct + "%";
+          progressBarInner.style.width = pct + "%";
+          updatePipeline(data.progress_value, data.running);
+        }
+
+        if (data.error) {
+          errorMsg.textContent = data.error;
+          errorMsg.classList.remove("hidden");
+          polling = false;
+          enhanceButton.disabled = false;
+          enhanceButton.textContent = "Enhance (ESRGAN x4)";
+          resetPipeline();
+          return;
+        }
+
+        if (data.input_url) {
+          currentInputUrl = data.input_url;
+          inputPreview.src = data.input_url;
+          inputPreview.classList.remove("hidden");
+          inputPlaceholder.classList.add("hidden");
+
+          mcInput.src = data.input_url;
+          mcInput.classList.remove("hidden");
+          mcInputPlaceholder.classList.add("hidden");
+        }
+
+        if (data.output_url) {
+          currentOutputUrl = data.output_url;
+          outputPreview.src = data.output_url;
+          outputPreview.classList.remove("hidden");
+          outputPlaceholder.classList.add("hidden");
+          downloadImageBtn.disabled = false;
+          compareButton.disabled = false;
+        }
+
+        if (data.baseline_url) {
+          currentBaselineUrl = data.baseline_url;
+        }
+
+        refreshCircle();
+        refreshModelComparison();
+
+        if (data.metrics) {
+          currentMetrics = data.metrics;
+          applyMetricsToUI(currentMetrics);
+        }
+
+        if (!data.running && data.output_url && data.input_url && !data.error) {
+          historyItems.unshift({
+            input: data.input_url,
+            output: data.output_url,
+            baseline: data.baseline_url || null,
+            metrics: data.metrics || null,
+          });
+          historyItems = historyItems.slice(0, 5);
+          renderHistory();
+        }
+
+        if (!data.running) {
+          enhanceButton.disabled = false;
+          enhanceButton.textContent = "Enhance (ESRGAN x4)";
+          polling = false;
+          // Final stage pipeline should show "complete"
+          updatePipeline(1.0, true);
+          return;
+        }
+
+        setTimeout(pollStatus, 500);
+      } catch (err) {
+        console.error(err);
+        polling = false;
+        enhanceButton.disabled = false;
+        enhanceButton.textContent = "Enhance (ESRGAN x4)";
+        resetPipeline();
+      }
+    }
+
+    // ---- Download buttons ----
+
+    downloadImageBtn.addEventListener("click", () => {
+      if (!currentOutputUrl) return;
+      const link = document.createElement("a");
+      link.href = currentOutputUrl;
+      link.download = "enhanced_image.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+
+    downloadReportBtn.addEventListener("click", () => {
+      if (!currentMetrics) return;
+
+      const m = currentMetrics;
+      const lines = [
+        "CCTV Image Enhancement Quality & Accuracy Report",
+        "----------------------------------------------",
+        "",
+        `Input resolution:   ${m.input_resolution || "?"}`,
+        `Output resolution:  ${m.output_resolution || "?"}`,
+        "",
+        `Upscale factor:     ${m.upscale_factor != null ? m.upscale_factor + "x" : "?"}`,
+        `Pixel increase:     ${m.pixel_increase_pct != null ? "+" + m.pixel_increase_pct + "%" : "?"}`,
+        "",
+        `Estimated sharpness (input):   ${m.sharpness_input}`,
+        `Estimated sharpness (output):  ${m.sharpness_output}`,
+        `Sharpness gain (approx):       ${
+          m.sharpness_gain_pct != null ? m.sharpness_gain_pct + "%" : "?"
+        }`,
+        "",
+        `PSNR vs. simple upscaled baseline: ${m.psnr_db != null ? m.psnr_db + " dB" : "?"}`,
+        `SSIM vs. simple upscaled baseline: ${m.ssim != null ? m.ssim : "?"}`,
+        `Approx. quality / accuracy score:  ${
+          m.quality_score_pct != null ? m.quality_score_pct + " / 100" : "?"
+        }`,
+        "",
+        "Note:",
+        "- In real CCTV scenarios, there is usually no perfect ground-truth high-resolution image.",
+        "- Here, we create a simple upscaled baseline (just interpolation) and compare the ESRGAN",
+        "  output to that baseline using PSNR and SSIM.",
+        "- Higher values indicate that the enhanced image preserves structure while adding detail."
+      ];
+
+      const text = lines.join("\n");
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "cctv_enhancement_quality_report.txt";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    });
+
+    // Initial pipeline state
+    resetPipeline();
+  </script>
+</body>
+</html>
